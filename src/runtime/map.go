@@ -205,6 +205,7 @@ func evacuated(b *bmap) bool {
 }
 
 func (b *bmap) overflow(t *maptype) *bmap {
+	// t.bucketsize - sys.PtrSize is to move back a pointer memory that points to overflow
 	return *(**bmap)(add(unsafe.Pointer(b), uintptr(t.bucketsize)-sys.PtrSize))
 }
 
@@ -401,12 +402,14 @@ func mapaccess1(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 	if msanenabled && h != nil {
 		msanread(key, t.key.size)
 	}
+	// if the map does not have any element, return a const zero value ptr
 	if h == nil || h.count == 0 {
 		if t.hashMightPanic() {
 			t.hasher(key, 0) // see issue 23734
 		}
 		return unsafe.Pointer(&zeroVal[0])
 	}
+	// if
 	if h.flags&hashWriting != 0 {
 		throw("concurrent map read and map write")
 	}
@@ -582,6 +585,7 @@ func mapassign(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 	if msanenabled {
 		msanread(key, t.key.size)
 	}
+	// check the third bit
 	if h.flags&hashWriting != 0 {
 		throw("concurrent map writes")
 	}
@@ -589,6 +593,7 @@ func mapassign(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 
 	// Set hashWriting after calling t.hasher, since t.hasher may panic,
 	// in which case we have not actually done a write.
+	// 4 = 0 xor 4
 	h.flags ^= hashWriting
 
 	if h.buckets == nil {
@@ -596,34 +601,44 @@ func mapassign(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 	}
 
 again:
+	// if b == 0, then bucketMask == 1, b==5, mask==11111
 	bucket := hash & bucketMask(h.B)
 	if h.growing() {
+		// bucket is index of buckets
 		growWork(t, h, bucket)
 	}
 	b := (*bmap)(unsafe.Pointer(uintptr(h.buckets) + bucket*uintptr(t.bucketsize)))
 	top := tophash(hash)
 
+	// points to key hash value
 	var inserti *uint8
+	// points to key cell location
 	var insertk unsafe.Pointer
 	var elem unsafe.Pointer
 bucketloop:
 	for {
 		for i := uintptr(0); i < bucketCnt; i++ {
+			// top hash is not equal
 			if b.tophash[i] != top {
+				// if this tophash is empty and cell is empty
 				if isEmpty(b.tophash[i]) && inserti == nil {
+					// mark tophash location
 					inserti = &b.tophash[i]
 					insertk = add(unsafe.Pointer(b), dataOffset+i*uintptr(t.keysize))
 					elem = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t.elemsize))
 				}
+				//break if there are no more non-empty cells at higher indexes or overflows.
 				if b.tophash[i] == emptyRest {
 					break bucketloop
 				}
 				continue
 			}
+			// get acutal key value
 			k := add(unsafe.Pointer(b), dataOffset+i*uintptr(t.keysize))
 			if t.indirectkey() {
 				k = *((*unsafe.Pointer)(k))
 			}
+			// the key does not match
 			if !t.key.equal(key, k) {
 				continue
 			}
@@ -634,6 +649,7 @@ bucketloop:
 			elem = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t.elemsize))
 			goto done
 		}
+		// check next bucket
 		ovf := b.overflow(t)
 		if ovf == nil {
 			break
@@ -676,6 +692,7 @@ done:
 	if h.flags&hashWriting == 0 {
 		throw("concurrent map writes")
 	}
+	// mark flags and get actual element value
 	h.flags &^= hashWriting
 	if t.indirectelem() {
 		elem = *((*unsafe.Pointer)(elem))
@@ -1060,7 +1077,7 @@ func hashGrow(t *maptype, h *hmap) {
 
 // overLoadFactor reports whether count items placed in 1<<B buckets is over loadFactor.
 func overLoadFactor(count int, B uint8) bool {
-	//     check if one bucket is enough, check num of elements is larger than 6.5 * 2 * B
+	//     check if one bucket is enough, check num of elements is larger than 6.5 * 2 ** B
 	return count > bucketCnt && uintptr(count) > loadFactorNum*(bucketShift(B)/loadFactorDen)
 }
 
@@ -1103,6 +1120,7 @@ func (h *hmap) oldbucketmask() uintptr {
 	return h.noldbuckets() - 1
 }
 
+// bucket is index of buckets
 func growWork(t *maptype, h *hmap, bucket uintptr) {
 	// make sure we evacuate the oldbucket corresponding
 	// to the bucket we're about to use
@@ -1127,20 +1145,25 @@ type evacDst struct {
 	e unsafe.Pointer // pointer to current elem storage
 }
 
+// old buckets is the index of buckets
 func evacuate(t *maptype, h *hmap, oldbucket uintptr) {
 	b := (*bmap)(add(h.oldbuckets, oldbucket*uintptr(t.bucketsize)))
+	// get number of buckets before expanding
 	newbit := h.noldbuckets()
+	// if this bucket is not evacuated
 	if !evacuated(b) {
 		// TODO: reuse overflow buckets instead of using new ones, if there
 		// is no iterator using the old buckets.  (If !oldIterator.)
 
 		// xy contains the x and y (low and high) evacuation destinations.
+		//if sameSizeGrow then use x, otherwise use y
 		var xy [2]evacDst
 		x := &xy[0]
 		x.b = (*bmap)(add(h.buckets, oldbucket*uintptr(t.bucketsize)))
 		x.k = add(unsafe.Pointer(x.b), dataOffset)
 		x.e = add(x.k, bucketCnt*uintptr(t.keysize))
 
+		// check sameSizeGrow bit in h.flags
 		if !h.sameSizeGrow() {
 			// Only calculate y pointers if we're growing bigger.
 			// Otherwise GC can see bad pointers.
@@ -1150,27 +1173,35 @@ func evacuate(t *maptype, h *hmap, oldbucket uintptr) {
 			y.e = add(y.k, bucketCnt*uintptr(t.keysize))
 		}
 
+		// outer loop, loop through b->b.overflow->b.overflow
 		for ; b != nil; b = b.overflow(t) {
 			k := add(unsafe.Pointer(b), dataOffset)
 			e := add(k, bucketCnt*uintptr(t.keysize))
+			// inner loop, loop through k in a bucket
 			for i := 0; i < bucketCnt; i, k, e = i+1, add(k, uintptr(t.keysize)), add(e, uintptr(t.elemsize)) {
 				top := b.tophash[i]
+				// mark a cell is evacuated
 				if isEmpty(top) {
 					b.tophash[i] = evacuatedEmpty
 					continue
 				}
+				// tophash in map is in an invalid state
 				if top < minTopHash {
 					throw("bad map state")
 				}
+				// get actual key value
 				k2 := k
 				if t.indirectkey() {
 					k2 = *((*unsafe.Pointer)(k2))
 				}
+
+				// check which bucket to use x or y
 				var useY uint8
 				if !h.sameSizeGrow() {
 					// Compute hash to make our evacuation decision (whether we need
 					// to send this key/elem to bucket x or bucket y).
 					hash := t.hasher(k2, uintptr(h.hash0))
+					// check if iterator is using, check if there is same key, check if the value of key is not equal
 					if h.flags&iterator != 0 && !t.reflexivekey() && !t.key.equal(k2, k2) {
 						// If key != key (NaNs), then the hash could be (and probably
 						// will be) entirely different from the old hash. Moreover,
