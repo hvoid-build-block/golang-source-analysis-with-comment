@@ -3,9 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="a24ec03b-01c0-4325-b3be-e97ce39f8ca3" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/cmd/go/testdata/modlegacy/src/new/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/src/cmd/go/testdata/modlegacy/src/new/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/cmd/go/testdata/modlegacy/src/new/sub/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/src/cmd/go/testdata/modlegacy/src/new/sub/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/cmd/go/testdata/modlegacy/src/new/sub/inner/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/src/cmd/go/testdata/modlegacy/src/new/sub/inner/go.mod" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/runtime/runtime2.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/runtime/runtime2.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -33,9 +31,9 @@
     <property name="go.vendoring.notification.had.been.shown" value="true" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
   </component>
-  <component name="SpellCheckerSettings" BundledDictionaries="0" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" Dictionaries="0" CorrectionsLimit="5" DefaultDictionary="application-level" UseSingleDictionary="true" />
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TypeScriptGeneratedFilesManager">
-    <option name="version" value="1" />
+    <option name="version" value="3" />
   </component>
   <component name="VgoProject">
     <integration-enabled>true</integration-enabled>
@@ -49,6 +47,10 @@
       <screen x="-880" y="-1080" width="2560" height="1080" />
     </state>
     <state x="200" y="-700" key="#Go_Modules/-880.-1080.2560.1080/0.0.1680.1050@-880.-1080.2560.1080" timestamp="1596769546274" />
+    <state x="318" y="444" width="624" height="533" key="#com.intellij.openapi.updateSettings.impl.PluginUpdateInfoDialog" timestamp="1598451458758">
+      <screen x="0" y="27" width="2560" height="1361" />
+    </state>
+    <state x="318" y="444" width="624" height="533" key="#com.intellij.openapi.updateSettings.impl.PluginUpdateInfoDialog/0.27.2560.1361/2560.0.1920.1080@0.27.2560.1361" timestamp="1598451458758" />
     <state x="3300" y="295" width="704" height="522" key="find.popup" timestamp="1597585589329">
       <screen x="2560" y="0" width="1920" height="1080" />
     </state>

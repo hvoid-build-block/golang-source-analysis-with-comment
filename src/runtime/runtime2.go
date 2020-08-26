@@ -323,12 +323,21 @@ type gobuf struct {
 	// and restores it doesn't need write barriers. It's still
 	// typed as a pointer so that any other writes from Go get
 	// write barriers.
+
+	// stack pointer, 保存cpu的rsp寄存器的值
 	sp   uintptr
+	// program counter，保存cpu的rip寄存器的值
 	pc   uintptr
+	// points to a goroutine, 记录当前gobuf属于哪个goroutine
 	g    guintptr
+	//
 	ctxt unsafe.Pointer
+
+	// 保存系统调用的返回值,因为从系统调用返回之后如果p被其它工作线程抢占，
+   // 则这个goroutine会被放入全局运行队列被其它工作线程调度，其它线程需要知道系统调用的返回值。
 	ret  sys.Uintreg
 	lr   uintptr
+	// 保存cpu的rip寄存器的值
 	bp   uintptr // for GOEXPERIMENT=framepointer
 }
 
@@ -393,7 +402,9 @@ type wincallbackcontext struct {
 // The bounds of the stack are exactly [lo, hi),
 // with no implicit data structures on either side.
 type stack struct {
+	// 栈顶,指向内存低地址
 	lo uintptr
+	// 栈底, 指向内存高地址
 	hi uintptr
 }
 
@@ -411,25 +422,35 @@ type g struct {
 	// stackguard1 is the stack pointer compared in the C stack growth prologue.
 	// It is stack.lo+StackGuard on g0 and gsignal stacks.
 	// It is ~0 on other goroutine stacks, to trigger a call to morestackc (and crash).
+
+	// 记录该goroutine使用的栈
 	stack       stack   // offset known to runtime/cgo
+	// 下面两个成员用于栈溢出检查，实现栈的自动伸缩，抢占调度也会用到stackguard0
 	stackguard0 uintptr // offset known to liblink
 	stackguard1 uintptr // offset known to liblink
 
 	_panic       *_panic // innermost panic - offset known to liblink
 	_defer       *_defer // innermost defer
+	 // 此goroutine正在被哪个工作线程执行
 	m            *m      // current m; offset known to arm liblink
+	// 保存调度信息，主要是几个寄存器的值
 	sched        gobuf
+	// 系统调用函数的stack pointer
 	syscallsp    uintptr        // if status==Gsyscall, syscallsp = sched.sp to use during gc
+	// 系统调用函数的program counter
 	syscallpc    uintptr        // if status==Gsyscall, syscallpc = sched.pc to use during gc
 	stktopsp     uintptr        // expected sp at top of stack, to check in traceback
 	param        unsafe.Pointer // passed parameter on wakeup
 	atomicstatus uint32
 	stackLock    uint32 // sigprof/scang lock; TODO: fold in to atomicstatus
 	goid         int64
+	 // schedlink字段指向全局运行队列中的下一个g，
+    //所有位于全局运行队列中的g形成一个链表
 	schedlink    guintptr
 	waitsince    int64      // approx time when the g become blocked
 	waitreason   waitReason // if status==Gwaiting
 
+	// 抢占调度标志，如果需要抢占调度，设置preempt为true
 	preempt       bool // preemption signal, duplicates stackguard0 = stackpreempt
 	preemptStop   bool // transition to _Gpreempted on preemption; otherwise, just deschedule
 	preemptShrink bool // shrink stack at synchronous safe point
@@ -482,6 +503,8 @@ type g struct {
 }
 
 type m struct {
+	// g0主要用来记录工作线程使用的栈信息，在执行调度代码时需要使用这个栈
+    // 执行用户goroutine代码时，使用用户goroutine自己的栈，调度时会发生栈的切换
 	g0      *g     // goroutine with scheduling stack
 	morebuf gobuf  // gobuf arg to morestack
 	divmod  uint32 // div/mod denominator for arm - known to liblink
@@ -493,8 +516,10 @@ type m struct {
 	sigmask       sigset       // storage for saved signal mask
 	tls           [6]uintptr   // thread-local storage (for x86 extern register)
 	mstartfn      func()
+	// 指向工作线程正在运行的goroutine的g结构体对象
 	curg          *g       // current running goroutine
 	caughtsig     guintptr // goroutine running during fatal signal
+	// 记录与当前工作线程绑定的p结构体对象
 	p             puintptr // attached p for executing go code (nil if not executing go code)
 	nextp         puintptr
 	oldp          puintptr // the p that was attached before executing a syscall
@@ -518,7 +543,10 @@ type m struct {
 	ncgo          int32       // number of cgo calls currently in progress
 	cgoCallersUse uint32      // if non-zero, cgoCallers in use temporarily
 	cgoCallers    *cgoCallers // cgo traceback if crashing in cgo call
+	 // 没有goroutine需要运行时，工作线程睡眠在这个park成员上，
+    // 其它线程通过这个park唤醒该工作线程
 	park          note
+	// 记录所有工作线程的一个链表
 	alllink       *m // on allm
 	schedlink     muintptr
 	lockedg       guintptr
@@ -585,6 +613,7 @@ type p struct {
 	// Queue of runnable goroutines. Accessed without lock.
 	runqhead uint32
 	runqtail uint32
+	//本地goroutine运行队列
 	runq     [256]guintptr
 	// runnext, if non-nil, is a runnable G that was ready'd by
 	// the current G and should be run next instead of what's in
@@ -691,6 +720,7 @@ type p struct {
 	pad cpu.CacheLinePad
 }
 
+//schedt结构体用来保存调度器的状态信息和goroutine的全局运行队列
 type schedt struct {
 	// accessed atomically. keep at top to ensure alignment on 32-bit systems.
 	goidgen   uint64
@@ -702,17 +732,22 @@ type schedt struct {
 	// When increasing nmidle, nmidlelocked, nmsys, or nmfreed, be
 	// sure to call checkdead().
 
+	//// 由空闲的工作线程组成链表
 	midle        muintptr // idle m's waiting for work
+	// 空闲的工作线程的数量
 	nmidle       int32    // number of idle m's waiting for work
 	nmidlelocked int32    // number of locked m's waiting for work
 	mnext        int64    // number of m's that have been created and next M ID
+	// 最多只能创建maxmcount个工作线程
 	maxmcount    int32    // maximum number of m's allowed (or die)
 	nmsys        int32    // number of system m's not counted for deadlock
 	nmfreed      int64    // cumulative number of freed m's
 
 	ngsys uint32 // number of system goroutines; updated atomically
 
+	// 由空闲的p结构体对象组成的链表
 	pidle      puintptr // idle p's
+	// 空闲的p结构体对象的数量
 	npidle     uint32
 	nmspinning uint32 // See "Worker thread parking/unparking" comment in proc.go.
 
@@ -733,6 +768,8 @@ type schedt struct {
 	}
 
 	// Global cache of dead G's.
+	 // gFree是所有已经退出的goroutine对应的g结构体对象组成的链表
+   // 用于缓存g结构体对象，避免每次创建goroutine时都重新分配内存
 	gFree struct {
 		lock    mutex
 		stack   gList // Gs with stacks
@@ -1029,13 +1066,19 @@ func (w waitReason) String() string {
 }
 
 var (
+	//  保存所有的g长度
 	allglen    uintptr
+	// 所有m的链表
 	allm       *m
+	// 所有p
 	allp       []*p  // len(allp) == gomaxprocs; may change at safe points, otherwise immutable
 	allpLock   mutex // Protects P-less reads of allp and all writes
+	// 最大thread个数
 	gomaxprocs int32
+	// cpu个数
 	ncpu       int32
 	forcegc    forcegcstate
+	// 调度器结构体对象，记录了调度器的工作状态
 	sched      schedt
 	newprocs   int32
 
